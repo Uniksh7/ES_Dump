@@ -1,32 +1,28 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
-from pyspark.sql.types import DecimalType
+from pyspark.sql.types import *
 
 spark = SparkSession.builder \
-    .appName("Healthcare_Reindex") \
+    .appName("Healthcare_Reindex_Fixed") \
     .config("spark.jars.packages",
             "org.elasticsearch:elasticsearch-spark-30_2.12:8.11.0") \
     .getOrCreate()
 
-
 def read_csv(path):
     return spark.read.csv(path, header=True, inferSchema=True)
 
-
-elig_df = read_csv("file:///home/unik/Downloads/did_data/elig_202305181247.csv")
-med_df  = read_csv("file:///home/unik/Downloads/did_data/med_202305181247.csv")
-rx_df   = read_csv("file:///home/unik/Downloads/did_data/rx_202305181249.csv")
-
+elig_df=read_csv("hdfs://localhost:9000/user/unik/healthcare_analysis/elig_202305181247.csv")
+med_df=read_csv("hdfs://localhost:9000/user/unik/healthcare_analysis/med_202305181247.csv")
+rx_df=read_csv("hdfs://localhost:9000/user/unik/healthcare_analysis/rx_202305181249.csv")
 
 def clean_columns(df):
     for c in df.columns:
         df = df.withColumnRenamed(c, c.lower().replace(" ", "_"))
     return df
 
-
-elig_df = clean_columns(elig_df)
-med_df  = clean_columns(med_df)
-rx_df   = clean_columns(rx_df)
+elig_df=clean_columns(elig_df)
+med_df=clean_columns(med_df)
+rx_df=clean_columns(rx_df)
 
 
 def convert_decimal(df):
@@ -35,10 +31,9 @@ def convert_decimal(df):
             df = df.withColumn(field.name, col(field.name).cast("double"))
     return df
 
-
-elig_df = convert_decimal(elig_df)
-med_df  = convert_decimal(med_df)
-rx_df   = convert_decimal(rx_df)
+elig_df=convert_decimal(elig_df)
+med_df=convert_decimal(med_df)
+rx_df=convert_decimal(rx_df)
 
 
 def ensure_pid(df):
@@ -46,24 +41,24 @@ def ensure_pid(df):
         raise Exception("pid column missing")
     return df
 
+elig_df=ensure_pid(elig_df)
+med_df=ensure_pid(med_df)
+rx_df=ensure_pid(rx_df)
 
-elig_df = ensure_pid(elig_df)
-med_df  = ensure_pid(med_df)
-rx_df   = ensure_pid(rx_df)
 
+med_df=med_df.dropDuplicates(["pid", "claim_id", "claim_line_seq"])
+rx_df=rx_df.dropDuplicates(["pid", "claim_id"])
 
-elig_struct = elig_df.select(
-    "pid",
+elig_struct = elig_df.select("pid",
     struct(*[col(c) for c in elig_df.columns if c != "pid"]).alias("elig")
 )
 
-med_struct = med_df.select(
-    "pid",
+
+med_struct = med_df.select("pid",
     struct(*[col(c) for c in med_df.columns if c != "pid"]).alias("med")
 ).groupBy("pid").agg(collect_list("med").alias("med"))
 
-rx_struct = rx_df.select(
-    "pid",
+rx_struct = rx_df.select("pid",
     struct(*[col(c) for c in rx_df.columns if c != "pid"]).alias("rx")
 ).groupBy("pid").agg(collect_list("rx").alias("rx"))
 

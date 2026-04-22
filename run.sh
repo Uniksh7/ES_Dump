@@ -1,0 +1,1 @@
+spark-submit --packages org.elasticsearch:elasticsearch-spark-30_2.12:8.11.0 es_dump.py
